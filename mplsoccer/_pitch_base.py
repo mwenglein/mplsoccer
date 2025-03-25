@@ -803,6 +803,7 @@ class BasePitch(ABC):
                   positions=None,
                   kind='scatter',
                   text=None,
+                  colors=None,
                   image=None,
                   flip=False,
                   half=False,
@@ -841,6 +842,8 @@ class BasePitch(ABC):
             The kind of plot to produce: 'scatter', 'text', 'image', 'pitch', or 'axes'.
         text : Collection[string], default None
             The text data to plot if kind = 'text'.
+        colors : Collection[str], default None
+            A collection of colors to use as background for plotting kind=text.
         image : Collection[array-like or PIL image], default None
             The image data to plot if kind = 'image'.
         flip : bool, default False
@@ -980,6 +983,12 @@ class BasePitch(ABC):
                 f'provided {len(text)} text strings for argument s. '
                 f'You need as many text strings as players.'
             )
+        if colors is not None and len(colors) != len(formation_positions):
+            raise ValueError(
+                f'There are {len(formation_positions)} players in the formation, but you have '
+                f'provided {len(colors)} colors for argument colors. '
+                f'You need as many colors as players.'
+            )
         if image is not None and len(image) != len(formation_positions):
             raise ValueError(
                 f'There are {len(formation_positions)} players in the formation, but you have '
@@ -1018,6 +1027,8 @@ class BasePitch(ABC):
         sorted_text = []
         sorted_xoffset = []
         sorted_yoffset = []
+        sorted_colors = []
+        sorted_bboxes = []
 
         for position in formation_positions:
             if half and flip:
@@ -1062,10 +1073,25 @@ class BasePitch(ABC):
                 position_idx = np.arange(len(positions))[np.array(positions) == pos].item()
                 if text is not None:
                     sorted_text.append(text[position_idx])
+                if colors is not None:
+                    sorted_colors.append(colors[position_idx])
                 if image is not None:
                     sorted_image.append(image[position_idx])
                 sorted_xoffset.append(xoffset[position_idx])
                 sorted_yoffset.append(yoffset[position_idx])
+
+        # handle text elements with background colors
+        if kind == 'text' and colors is not None:
+            default_bbox = None
+            if 'bbox' in kwargs:
+                default_bbox = kwargs['bbox']
+                del kwargs['bbox']
+            else:
+                default_bbox = dict(facecolor='grey', boxstyle='round,pad=0.2', linewidth=0, alpha=0.5)
+
+            # make copies of default_bbox and update the facecolor with the sorted_colors
+            for color in sorted_colors:
+                sorted_bboxes.append(dict(default_bbox, facecolor=color))
 
         if requires_positions:
             x = np.asarray(x) + sorted_xoffset
@@ -1110,7 +1136,10 @@ class BasePitch(ABC):
         if kind == 'text':
             text = []
             for i in range(len(formation_positions)):
-                text.append(self.text(x[i], y[i], sorted_text[i], ax=ax, **kwargs))
+                if colors is not None:
+                    text.append(self.text(x[i], y[i], sorted_text[i], ax=ax, bbox=sorted_bboxes[i], **kwargs))
+                else:
+                    text.append(self.text(x[i], y[i], sorted_text[i], ax=ax, **kwargs))
             return text
         raise NotImplementedError(f"kind = '{kind}' is not implemented. "
                                   "Valid arguments are 'scatter', 'image', 'axes', "
